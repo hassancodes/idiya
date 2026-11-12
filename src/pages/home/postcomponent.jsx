@@ -95,6 +95,28 @@ export const PostComponent = ({ post }) => {
     setShareMessage('');
     const url = `${window.location.origin}/#post-${post.id}`;
     try {
+      if (post.mediaUrl && post.mediaType !== 'video' && navigator.share && navigator.canShare) {
+        try {
+          const response = await fetch(post.mediaUrl);
+          if (!response.ok) throw new Error(`Image request failed with status ${response.status}`);
+          const image = await response.blob();
+          const extension = image.type.split('/')[1]?.split(';')[0] || 'jpg';
+          const imageFile = new File([image], `idiya-${post.id}.${extension}`, { type: image.type });
+
+          if (navigator.canShare({ files: [imageFile] })) {
+            await navigator.share({
+              title: post.title || 'A post on Idiya',
+              text: url,
+              files: [imageFile],
+            });
+            return;
+          }
+        } catch (error) {
+          if (error.name === 'AbortError') throw error;
+          console.error('Unable to share post image:', error);
+        }
+      }
+
       if (navigator.share) {
         await navigator.share({ title: post.title || 'A post on Idiya', url });
         return;
