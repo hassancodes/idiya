@@ -1,64 +1,98 @@
-import {Link} from "react-router-dom";
-import {auth} from "../config/firebase";
+import { useState } from 'react';
+import { Link, NavLink } from 'react-router-dom';
+import { useAuthState } from 'react-firebase-hooks/auth';
+import { signOut } from 'firebase/auth';
+import { auth } from '../config/firebase';
 
-// used to manage the current user
-import {useAuthState} from "react-firebase-hooks/auth"
-// using this to sign out the current user.
-import {signOut} from "firebase/auth";
+const getInitials = (name = '') =>
+  name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase() || 'I';
 
-export const Navbar= ()=>{
-const [user] = useAuthState(auth);
-const sighUserOut=async ()=>{
-await signOut(auth)
-}
-return (
-<div>
+export const Navbar = () => {
+  const [user] = useAuthState(auth);
+  const [signOutError, setSignOutError] = useState('');
 
-    <nav class="navbar navbar-expand-lg navbar-light bg-light">
-        <a class="navbar-brand" href="#"><strong>Idiya.</strong></a>
-        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNavAltMarkup"
-            aria-controls="navbarNavAltMarkup" aria-expanded="false" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="navbarNavAltMarkup">
-            <div class="navbar-nav">
-                <a class="nav-item nav-link active" href="/">Home</a>
+  const signUserOut = async () => {
+    setSignOutError('');
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error('Unable to sign out:', error);
+      setSignOutError('Could not sign out. Please try again.');
+    }
+  };
 
-                <a class="nav-item nav-link" href={!user ? "/login" : "/createPost" }>{!user ? "Login" :
-                    "CreatePost"}</a>
-                <a class="nav-item nav-link text-right">
-                    <p>{user?.displayName}</p>
-                </a>
+  return (
+    <>
+      <header className="topbar">
+        <div className="topbar-inner">
+          <Link className="brand" to="/" aria-label="Idiya home">
+            <span className="brand-mark">i</span>
+            <span>idiya<span className="brand-period">.</span></span>
+          </Link>
 
-                {/* <a class="nav-item nav-link"><img width="28px" height="28px" class="img-fluid float-right"
-                        src={user?.photoURL || "" } /></a> */}
-                {user && <button role="button" class="btn btn-outline-success" onClick={sighUserOut}>LogOut</button>}
+          <nav className="primary-nav" aria-label="Main navigation">
+            <NavLink to="/" end className={({ isActive }) => `nav-link${isActive ? ' is-active' : ''}`}>
+              <span className="nav-icon" aria-hidden="true">⌂</span>
+              <span>Discover</span>
+            </NavLink>
+            {user && (
+              <NavLink to="/create-post" className={({ isActive }) => `nav-link${isActive ? ' is-active' : ''}`}>
+                <span className="nav-icon" aria-hidden="true">＋</span>
+                <span>Create</span>
+              </NavLink>
+            )}
+          </nav>
 
-
-
-            </div>
+          <div className="topbar-actions">
+            {user ? (
+              <>
+                <Link to="/create-post" className="button button-primary topbar-create">
+                  <span aria-hidden="true">＋</span> Create post
+                </Link>
+                <div className="account-menu">
+                  <div className="user-chip" title={user.displayName || 'Your account'}>
+                    {user.photoURL ? (
+                      <img className="avatar avatar-small" src={user.photoURL} alt="" />
+                    ) : (
+                      <span className="avatar avatar-small avatar-fallback">{getInitials(user.displayName)}</span>
+                    )}
+                    <span className="user-chip-name">{user.displayName || 'Your account'}</span>
+                  </div>
+                  <button type="button" className="button button-quiet signout-button" onClick={signUserOut}>
+                    Sign out
+                  </button>
+                </div>
+              </>
+            ) : (
+              <Link to="/login" className="button button-primary">
+                Sign in <span aria-hidden="true">↗</span>
+              </Link>
+            )}
+          </div>
         </div>
-    </nav>
+        {signOutError && <p className="topbar-error" role="alert">{signOutError}</p>}
+      </header>
 
-</div>
-)
-}
-
-
-const NAVBAR=(props)=>{
-return (
-<nav class="navbar navbar-expand-lg navbar-light bg-light">
-    <a class="navbar-brand" href="#"><strong>Idiya</strong></a>
-    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNavAltMarkup"
-        aria-controls="navbarNavAltMarkup" aria-expanded="false" aria-label="Toggle navigation">
-        <span class="navbar-toggler-icon"></span>
-    </button>
-    <div class="collapse navbar-collapse" id="navbarNavAltMarkup">
-        <div class="navbar-nav">
-            <a class="nav-item nav-link active" href="/">Home</a>
-            <a class="nav-item nav-link" href="/"></a>
-        </div>
-    </div>
-</nav>
-)
-}
+      <nav className="mobile-nav" aria-label="Mobile navigation">
+        <NavLink to="/" end className={({ isActive }) => `mobile-nav-link${isActive ? ' is-active' : ''}`}>
+          <span aria-hidden="true">⌂</span>Home
+        </NavLink>
+        {user ? (
+          <NavLink to="/create-post" className={({ isActive }) => `mobile-nav-link${isActive ? ' is-active' : ''}`}>
+            <span aria-hidden="true">＋</span>Create
+          </NavLink>
+        ) : (
+          <NavLink to="/login" className={({ isActive }) => `mobile-nav-link${isActive ? ' is-active' : ''}`}>
+            <span aria-hidden="true">↗</span>Sign in
+          </NavLink>
+        )}
+      </nav>
+    </>
+  );
+};

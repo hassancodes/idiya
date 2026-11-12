@@ -1,25 +1,31 @@
-# React-Firebase-App
+# Idiya
 
-### Day 1 :
-- Creating routes using **react-router-dom**
-- login and logout functionality.
-- Added support for **Firebase google signin**.
+Idiya is a responsive community feed for sharing ideas, photos, and short videos. Visitors can browse and search public posts; signed-in members can publish, like, and comment.
 
-### Day 2 
-- implemente firebase adding post to the app
-- squashed some bugs.
+## Run locally
 
-### Project Completed 
-- add post funcitionaliy, like and dislike is working as intended.
+```sh
+npm install
+npm run dev
+```
 
-### host it live for the users to login.
-- ✅ done successfully
+Before using Firebase features, configure the Firebase project in `src/config/firebase.js`. In the Firebase console:
 
-### Currently focusing on 
+1. Enable Google as a sign-in provider in Authentication and add your local and production domains to Authorized domains.
+2. Create a Cloud Firestore database.
+3. Enable Cloud Storage and create its default bucket.
+4. Deploy the included Firestore and Storage rules before opening the app to users.
 
-- building comment section
-- Commit
-- Still working on that
-- trying to fix comment submission.
-- reaching max reads on firebase . Not able to carry on with the project.
+The public feed is readable without signing in. Creating posts, liking, commenting, and uploading media require a signed-in Google account. Media is limited to 50 MB and supported image/video formats.
 
+## Deploy
+
+The repository is configured for Firebase Hosting and targets the project selected in `.firebaserc`.
+
+```sh
+npm run lint
+npm run build
+firebase deploy --only hosting,firestore:rules,storage
+```
+
+If the project or Firebase CLI is not already selected, sign in with `firebase login` and select the intended project with `firebase use`. The rules in `firestore.rules` and `storage.rules` are part of the app’s access controls; deploy them before publishing the site.

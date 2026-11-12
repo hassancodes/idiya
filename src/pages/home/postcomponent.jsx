@@ -1,158 +1,205 @@
-import {addDoc,getDocs,deleteDoc,doc,collection,query,where} from "firebase/firestore";
-import {auth, db} from "../../config/firebase"
-// import {Post as IPost} from "./Home"
-import { useAuthState } from "react-firebase-hooks/auth";
-import { useEffect,useState } from "react";
-import { Comment } from "./comment";
-import "../../../src/App.css"
-// imported the interface
+import { addDoc, collection, deleteDoc, doc, getDocs, query, where } from 'firebase/firestore';
+import { useAuthState } from 'react-firebase-hooks/auth';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import PropTypes from 'prop-types';
+import { Link } from 'react-router-dom';
+import { auth, db } from '../../config/firebase';
+import { Comment } from './comment';
 
+const getInitials = (name = '') =>
+  name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase() || 'I';
 
-// interface for get users who like the post {
+const formatDate = (timestamp) => {
+  const date = timestamp?.toDate?.();
+  if (!date) return 'Just shared';
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date);
+};
 
-export const PostComponent=(props)=>{
-    // learn more about this concept
-    const {post} = props;
-    const [user] = useAuthState(auth);
-    const [likes,setLikes] = useState(null);
-    // this hook is to either show
-    const [showComment, setShowComment] = useState();
-    const likeRef = collection(db,"likes")
+export const PostComponent = ({ post }) => {
+  const [user] = useAuthState(auth);
+  const [likes, setLikes] = useState([]);
+  const [likesLoaded, setLikesLoaded] = useState(false);
+  const [likeBusy, setLikeBusy] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [shareMessage, setShareMessage] = useState('');
+  const likeRef = useMemo(() => collection(db, 'likes'), []);
+  const postLikesQuery = useMemo(
+    () => query(likeRef, where('postId', '==', post.id)),
+    [likeRef, post.id],
+  );
 
-
-
-    // ============ fetching likes logic starts from here ============
-
-    // get all the like docs where the postId(already stored in firebase == to current post.id(that is being liked))
-    const likeDoc = query(likeRef, where("postId","==",post.id))
-    const getLike = async ()=>{
-    const data =await getDocs(likeDoc);
-    // using this we can get all the ids that like and number of ids using array length.
-    setLikes(data.docs.map((doc)=>({ id:doc.data().id,likeId:doc.id})));
-    // setLike(data.docs);
+  const getLikes = useCallback(async () => {
+    try {
+      const snapshot = await getDocs(postLikesQuery);
+      setLikes(snapshot.docs.map((likeDoc) => ({ id: likeDoc.data().id, likeId: likeDoc.id })));
+    } catch (error) {
+      console.error('Unable to load post likes:', error);
+      setActionError('Likes are unavailable right now.');
+    } finally {
+      setLikesLoaded(true);
     }
+  }, [postLikesQuery]);
 
-    // we are adding an empty list as an argument, so that useEffect will only run when the component is mounting, not when
-    // updating.
-    useEffect(()=>{
-    getLike();
-    },[])
+  useEffect(() => {
+    getLikes();
+  }, [getLikes]);
 
+  const userLike = likes.find((like) => like.id === user?.uid);
 
+  const toggleLike = async () => {
+    if (!user) return;
+    if (likeBusy) return;
 
-
-    // ============ adding the like functionality starts from here ============
-    const addLike=async ()=>{
-        try{
-        const newDoc = await addDoc(likeRef,{id:user?.uid, postId:post?.id})
-        if(user){
-        setLikes((prev)=>
-        prev ? [...prev, {id : user.uid, likeId:newDoc.id }] : [{id : user.uid ,likeId:newDoc.id}]);
-        // prev && [...prev ,{id:user.uid}]);
+    setLikeBusy(true);
+    setActionError('');
+    try {
+      if (userLike) {
+        await deleteDoc(doc(db, 'likes', userLike.likeId));
+        setLikes((previous) => previous.filter((like) => like.likeId !== userLike.likeId));
+      } else {
+        const existingLike = query(
+          likeRef,
+          where('postId', '==', post.id),
+          where('id', '==', user.uid),
+        );
+        const existingSnapshot = await getDocs(existingLike);
+        if (existingSnapshot.empty) {
+          const createdLike = await addDoc(likeRef, { id: user.uid, postId: post.id });
+          setLikes((previous) => [...previous, { id: user.uid, likeId: createdLike.id }]);
+        } else {
+          setLikes((previous) => [
+            ...previous,
+            ...existingSnapshot.docs.map((likeDoc) => ({
+              id: likeDoc.data().id,
+              likeId: likeDoc.id,
+            })),
+          ]);
         }
-        }
-        catch(error){
-        console.log(error);
+      }
+    } catch (error) {
+      console.error('Unable to update post like:', error);
+      setActionError('Could not update your like. Please try again.');
+    } finally {
+      setLikeBusy(false);
     }
+  };
 
+  const sharePost = async () => {
+    setShareMessage('');
+    const url = `${window.location.origin}/#post-${post.id}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: post.title || 'A post on Idiya', url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      setShareMessage('Link copied');
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        console.error('Unable to share post:', error);
+        setShareMessage('Sharing is unavailable');
+      }
     }
-    // ============ adding the like functionality ends here ===============
+  };
 
-
-    // ============ remove like function is going to start here ==========
-    const removeLike =async()=>{
-        try{
-        const deleteQuery = query(likeRef, where("postId","==",post?.id),where("id","==",user?.uid));
-        const deleteData = await getDocs(deleteQuery);
-        const likedId = deleteData.docs[0].id
-        const likeToDelete = doc(db,"likes",likedId);
-
-        await deleteDoc(likeToDelete);
-        // updating the likes list
-        if(user){
-        setLikes((prev)=>prev && prev.filter((like)=>like.likeId !== likedId));
-        }
-
-        }catch(error){
-
-    }
-
-    }
-    // ============ remove like function is going to ends here ==========
-
-
-    const hasUserLiked = likes?.find((like)=> like.id === user?.uid)
-
-
-    const clickedCommentSection = ()=>{
-        if(showComment){
-            setShowComment(false);
-            return showComment;
-        }
-        setShowComment(true)
-        return showComment;
-
-    }
-
-
-   
-
-    return (
-
-        <>
-        
-        <div class="card  mb-5 post border-secondary">
-            <div class="card-header bg-secondary text-white"><img class="post-profile" src={post.profileUrl || "" } />@{post.username}</div>
-            
-            <div class="card-body">
-                <h5 class="card-title">{post.title}</h5>
-                <p class="card-text">{post.description}</p>
-            </div>
-            
-            <div class="card-footer bg-transparent  post-footer">
-                <button  onClick={hasUserLiked ? removeLike : addLike}>{hasUserLiked ? <i class="fa-solid fa-heart fa-lg" style={{color: "#c80000;"}}></i> : <><i class="fa-regular fa-lg fa-heart"></i></>}</button>
-                {likes && <p> &#160;&#160;{likes.length} </p>}
-                
-                &nbsp;&nbsp;&nbsp;
-                <button onClick={clickedCommentSection}><i class="fa-regular fa-comment fa-lg"></i></button>
-                {likes && <p> &#160;&#160;  {likes.length-likes.length} </p>}
-
-
-                &nbsp;&nbsp;&nbsp;
-                <button><i class="fa-regular fa-share-from-square"></i></button>
-                {likes && <p> &#160;&#160;  </p>}
-
-                
-            </div>
-
-            <div class="card-footer bg-transparent  post-footer">
-                {showComment ? <Comment PostId={post.id}/> : ""} 
-                
-            </div>
-
+  return (
+    <article className="post-card" id={`post-${post.id}`}>
+      <header className="post-header">
+        {post.profileUrl ? (
+          <img className="avatar" src={post.profileUrl} alt="" />
+        ) : (
+          <span className="avatar avatar-fallback">{getInitials(post.username)}</span>
+        )}
+        <div className="post-author">
+          <strong>{post.username || 'A community member'}</strong>
+          <span>{formatDate(post.createdAt)}</span>
         </div>
+        {post.mediaType && (
+          <span className="post-kind">
+            <span aria-hidden="true">{post.mediaType === 'video' ? '▶' : '▧'}</span>
+            {post.mediaType === 'video' ? 'Video' : 'Photo'}
+          </span>
+        )}
+      </header>
 
-        
+      <div className="post-content">
+        {post.title && <h2 className="post-title">{post.title}</h2>}
+        {post.description && <p className="post-copy">{post.description}</p>}
+      </div>
 
+      {post.mediaUrl && (
+        <div className={`post-media${post.mediaType === 'video' ? ' post-media-video' : ''}`}>
+          {post.mediaType === 'video' ? (
+            <video src={post.mediaUrl} controls playsInline preload="metadata" aria-label={post.title || 'Community video'} />
+          ) : (
+            <img src={post.mediaUrl} alt={post.title || post.description || 'Community photo'} loading="lazy" />
+          )}
+        </div>
+      )}
 
+      <div className="post-actions">
+        <div className="post-actions-left">
+          {user ? (
+            <button
+              type="button"
+              className={`post-action${userLike ? ' is-liked' : ''}`}
+              onClick={toggleLike}
+              disabled={!likesLoaded || likeBusy}
+              aria-label={userLike ? 'Unlike post' : 'Like post'}
+              aria-pressed={Boolean(userLike)}
+            >
+              <span className="action-icon" aria-hidden="true">{userLike ? '♥' : '♡'}</span>
+              <span>{likes.length}</span>
+            </button>
+          ) : (
+            <Link to="/login" className="post-action" aria-label={`Sign in to like this post; ${likes.length} likes`}>
+              <span className="action-icon" aria-hidden="true">♡</span>
+              <span>{likes.length}</span>
+            </Link>
+          )}
+          <button
+            type="button"
+            className={`post-action${showComments ? ' is-selected' : ''}`}
+            onClick={() => setShowComments((previous) => !previous)}
+            aria-expanded={showComments}
+          >
+            <span className="action-icon" aria-hidden="true">▤</span>
+            <span>{showComments ? 'Hide comments' : 'Comments'}</span>
+          </button>
+        </div>
+        <button type="button" className="post-action share-action" onClick={sharePost}>
+          <span className="action-icon" aria-hidden="true">↗</span>
+          <span>Share</span>
+        </button>
+      </div>
 
-        
-        
-        {/* <div>
-                <div className="title">
-                    <h3>{post.title}</h3>
-                </div>
-                <div className="body">
-                    <p>{post.description}</p>
-                </div>
-                <div className="footer">
-                    <p>@{post.username}</p>
-                    <button onClick={hasUserLiked ? removeLike : addLike}>{hasUserLiked ? <>&#128078;</> : <>&#128077;</>}</button>
-                    {likes && <p>Likes :{likes.length} </p>}
+      {(actionError || shareMessage) && (
+        <p className={`post-feedback${actionError ? ' has-error' : ''}`} role={actionError ? 'alert' : 'status'}>
+          {actionError || shareMessage}
+        </p>
+      )}
 
-                </div>
-            </div> */}
-            
-            
-            </>);
-}
+      {showComments && <Comment PostId={post.id} />}
+    </article>
+  );
+};
+
+PostComponent.propTypes = {
+  post: PropTypes.shape({
+    id: PropTypes.string.isRequired,
+    username: PropTypes.string,
+    profileUrl: PropTypes.string,
+    title: PropTypes.string,
+    description: PropTypes.string,
+    mediaUrl: PropTypes.string,
+    mediaType: PropTypes.oneOf(['image', 'video']),
+    createdAt: PropTypes.object,
+  }).isRequired,
+};

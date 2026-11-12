@@ -1,0 +1,79 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'title', 'description', 'username', 'id', 'profileUrl', 'createdAt',
+          'mediaUrl', 'mediaPath', 'mediaType'
+        ])
+        && request.resource.data.keys().hasAll([
+          'title', 'description', 'username', 'id', 'profileUrl', 'createdAt'
+        ])
+        && request.resource.data.id == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.title.size() <= 100
+        && request.resource.data.description is string
+        && request.resource.data.description.size() <= 1000
+        && request.resource.data.username is string
+        && request.resource.data.profileUrl is string
+        && request.resource.data.createdAt is timestamp
+        && (
+          request.resource.data.title.size() > 0
+          || request.resource.data.description.size() > 0
+          || 'mediaUrl' in request.resource.data
+        )
+        && (
+          !('mediaUrl' in request.resource.data)
+          || (
+            request.resource.data.keys().hasAll(['mediaUrl', 'mediaPath', 'mediaType'])
+            && request.resource.data.mediaUrl is string
+            && request.resource.data.mediaPath is string
+            && request.resource.data.mediaType in ['image', 'video']
+          )
+        );
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.id == request.auth.uid;
+    }
+
+    match /likes/{likeId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['id', 'postId'])
+        && request.resource.data.keys().hasAll(['id', 'postId'])
+        && request.resource.data.id == request.auth.uid
+        && request.resource.data.postId is string;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.id == request.auth.uid;
+    }
+
+    match /Comments/{commentId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'commentText', 'postIDComment', 'username', 'profileUrl',
+          'authorId', 'commentCreatedAt', 'commentTime'
+        ])
+        && request.resource.data.keys().hasAll([
+          'commentText', 'postIDComment', 'username', 'profileUrl',
+          'authorId', 'commentCreatedAt', 'commentTime'
+        ])
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.commentText is string
+        && request.resource.data.commentText.size() > 0
+        && request.resource.data.commentText.size() <= 300
+        && request.resource.data.postIDComment is string
+        && request.resource.data.username is string
+        && request.resource.data.profileUrl is string
+        && request.resource.data.commentCreatedAt is timestamp
+        && request.resource.data.commentTime is string;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
+    }
+  }
+}
